@@ -3,14 +3,24 @@
 #include <iomanip>
 #include <string>
 #include <vector>
-
+#include <sys/utsname.h>
+#include <unistd.h>
+#include <stdexcept>
+#include <iostream>
 #include "linux_parser.h"
-
 using std::stof;
 using std::string;
 using std::to_string;
 using std::vector;
 
+std::string getKernelVersion() {
+    struct utsname buffer;
+    if (uname(&buffer) != 0) {
+        perror("uname");
+        exit(EXIT_FAILURE);
+    }
+    return std::string(buffer.release);
+}
 // DONE: An example of how to read data from the filesystem
 string LinuxParser::OperatingSystem() {
   string line;
@@ -310,10 +320,12 @@ string LinuxParser::User(int pid)
   return "";
 }
 
+
 long LinuxParser::UpTime(int pid)
 {
   std::string line, value;
   unsigned long time = 0;
+  int major, minor;
   std::vector<std::string> buf;
   std::ifstream fstream(kProcDirectory + std::to_string(pid) + kStatFilename);
   if (fstream.is_open())
@@ -326,9 +338,22 @@ long LinuxParser::UpTime(int pid)
     }
     if (buf.size() > 0)
     {
-      time = std::stol(buf[21]) / sysconf(_SC_CLK_TCK);
+      std::string version = getKernelVersion();
+      sscanf(version.c_str(), "%d.%d", &major, &minor);
+      if (major > 2 || (major == 2 && minor >= 6))
+      {
+        // Code for Linux kernel version 2.6 and greater
+        time = std::stol(buf[21]) / sysconf(_SC_CLK_TCK);
+      } else 
+      {
+          // Code for Linux kernel version less than 2.6
+          time = ActiveJiffies(pid);
+      }
+
       return time;
     }
   }
+  
+
   return 0;
 }
